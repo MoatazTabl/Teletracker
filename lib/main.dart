@@ -3,12 +3,15 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:teletracker/firebase_options.dart';
 
+import 'core/notification_service.dart';
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   try {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
+    await NotificationService.instance.initialize();
     runApp(const MyApp());
   } catch (e) {
     print(e);
@@ -59,9 +62,10 @@ class MessagesPage extends StatelessWidget {
             return const Center(child: Text('No messages found.'));
           }
 
-          final messages = snapshot.data!.docs;
+          final messages = snapshot.data!.docs.reversed.toList();
           return ListView.builder(
             itemCount: messages.length,
+            
             itemBuilder: (context, index) {
               final messageDoc = messages[index];
               return MessageCard(messageDoc: messageDoc);
@@ -79,7 +83,7 @@ class MessageCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final String currentVersion = messageDoc.get('current_version') ?? 'N/A';
+    // final String currentVersion = messageDoc.get('current_version') ?? '1';
     final String userName = messageDoc.get('username') ?? 'Unknown User';
 
     return Card(
@@ -113,7 +117,7 @@ class MessageCard extends StatelessWidget {
           final versions = snapshot.data!.docs;
           return ExpansionTile(
             title: Text("Name: $userName"),
-            subtitle: Text("Current Version: $currentVersion"),
+            subtitle: Text("Current Version: 1"),
             children: [
               ListView.builder(
                 shrinkWrap: true,
@@ -123,13 +127,14 @@ class MessageCard extends StatelessWidget {
                   final versionData = versions[index].data();
                   final content = versionData['message'] ?? 'No content';
                   final versionNumber = versionData['version'] ?? index + 1;
-                  final date = versionData['date']?.toString() ?? 'No date';
+                  final Timestamp date = versionData['date'] ?? 'No date';
 
+                  final time=date.toDate();
                   return ListTile(
                     title: Text(content),
                     subtitle: Text("Version: $versionNumber"),
                     trailing: Text(
-                      date,
+                      time.toString(),
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                     contentPadding: const EdgeInsets.symmetric(horizontal: 16),

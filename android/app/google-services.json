@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "520501359632",
+    "project_id": "telegramtracker-5532a",
+    "storage_bucket": "telegramtracker-5532a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:520501359632:android:ab92584404c3aa272a0695",
+        "android_client_info": {
+          "package_name": "com.example.teletracker"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAb3Y9fQSAF53TrJe49-BFAXmrp2EaSHhA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

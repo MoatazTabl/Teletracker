@@ -1,28 +1,136 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'package:teletracker/features/home_screen/home_screen.dart';
 import 'package:teletracker/firebase_options.dart';
+import 'dart:async';
 
 import 'core/notification_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  try {
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
-    await NotificationService.instance.initialize();
-    runApp(const MyApp());
-  } catch (e) {
-    print(e);
+
+  // Catch Flutter errors and send to Crashlytics
+  FlutterError.onError = (FlutterErrorDetails details) {
+    FlutterError.presentError(details);
+    FirebaseCrashlytics.instance.recordFlutterFatalError(details);
+  };
+
+  // Initialize Firebase with retry logic
+  if (await initializeFirebaseWithRetry()) {
+    try {
+      // Initialize Crashlytics
+      await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(true);
+
+      // Pass all uncaught asynchronous errors to Crashlytics
+      PlatformDispatcher.instance.onError = (error, stack) {
+        FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+        return true;
+      };
+
+      await NotificationService.instance.initialize();
+      runApp(const MyApp());
+    } catch (e, stack) {
+      print('Failed to initialize services: $e');
+      // Record the error to Crashlytics if it's available
+      try {
+        FirebaseCrashlytics.instance.recordError(
+          e,
+          stack,
+          reason: 'Error during app initialization',
+        );
+      } catch (_) {
+        // Ignore if Crashlytics isn't initialized yet
+      }
+      runApp(buildErrorApp('Failed to initialize services'));
+    }
+  } else {
     runApp(
-      const MaterialApp(
-        home: Scaffold(
-          body: Center(child: Text('Failed to initialize Firebase')),
-        ),
-      ),
+      buildErrorApp('Failed to initialize Firebase after multiple attempts'),
     );
   }
+}
+
+/// Attempts to initialize Firebase with retry logic
+/// Returns true if successful, false otherwise
+Future<bool> initializeFirebaseWithRetry({
+  int maxAttempts = 3,
+  Duration delayBetweenAttempts = const Duration(seconds: 2),
+}) async {
+  int attempts = 0;
+
+  while (attempts < maxAttempts) {
+    try {
+      attempts++;
+      print(
+        'Attempting to initialize Firebase (Attempt $attempts of $maxAttempts)',
+      );
+
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+
+      print('Firebase initialized successfully');
+      return true;
+    } catch (e, stack) {
+      print('Firebase initialization failed: $e');
+
+      if (attempts >= maxAttempts) {
+        try {
+          // Try to record the error if Crashlytics is available
+          await FirebaseCrashlytics.instance.recordError(
+            e,
+            stack,
+            reason:
+                'Firebase initialization failed after $maxAttempts attempts',
+          );
+        } catch (_) {
+          // Ignore if Crashlytics isn't initialized yet
+        }
+
+        print(
+          'Maximum attempts reached. Giving up on Firebase initialization.',
+        );
+        return false;
+      }
+
+      print('Retrying in ${delayBetweenAttempts.inSeconds} seconds...');
+      await Future.delayed(delayBetweenAttempts);
+    }
+  }
+
+  return false;
+}
+
+/// Builds an error app with the specified message
+MaterialApp buildErrorApp(String errorMessage) {
+  return MaterialApp(
+    home: Scaffold(
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.error_outline, color: Colors.red, size: 60),
+              const SizedBox(height: 16),
+              Text(
+                errorMessage,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 16),
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton(
+                onPressed: () => main(),
+                child: const Text('Retry'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
 }
 
 class MyApp extends StatelessWidget {
@@ -35,116 +143,6 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(primarySwatch: Colors.blue, useMaterial3: true),
       home: MessagesPage(),
       debugShowCheckedModeBanner: false,
-    );
-  }
-}
-
-class MessagesPage extends StatelessWidget {
-  final CollectionReference<Map<String, dynamic>> messagesRef =
-      FirebaseFirestore.instance.collection('messages');
-
-  MessagesPage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Telegram Messages'), centerTitle: true),
-      body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-        stream: messagesRef.snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snapshot.hasError) {
-            return Center(child: Text('Error: ${snapshot.error}'));
-          }
-          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-            return const Center(child: Text('No messages found.'));
-          }
-
-          final messages = snapshot.data!.docs.reversed.toList();
-          return ListView.builder(
-            itemCount: messages.length,
-            
-            itemBuilder: (context, index) {
-              final messageDoc = messages[index];
-              return MessageCard(messageDoc: messageDoc);
-            },
-          );
-        },
-      ),
-    );
-  }
-}
-
-class MessageCard extends StatelessWidget {
-  final QueryDocumentSnapshot<Map<String, dynamic>> messageDoc;
-  const MessageCard({super.key, required this.messageDoc});
-
-  @override
-  Widget build(BuildContext context) {
-    // final String currentVersion = messageDoc.get('current_version') ?? '1';
-    final String userName = messageDoc.get('username') ?? 'Unknown User';
-
-    return Card(
-      margin: const EdgeInsets.all(8),
-      child: FutureBuilder<QuerySnapshot<Map<String, dynamic>>>(
-        future:
-            messageDoc.reference
-                .collection('versions')
-                .orderBy("version")
-                .get(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Padding(
-              padding: EdgeInsets.all(8.0),
-              child: Center(child: CircularProgressIndicator()),
-            );
-          }
-          if (snapshot.hasError) {
-            return Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: Text('Error: ${snapshot.error}'),
-            );
-          }
-          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-            return const Padding(
-              padding: EdgeInsets.all(8.0),
-              child: Text('No versions found.'),
-            );
-          }
-
-          final versions = snapshot.data!.docs;
-          return ExpansionTile(
-            title: Text("Name: $userName"),
-            subtitle: Text("Current Version: 1"),
-            children: [
-              ListView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: versions.length,
-                itemBuilder: (context, index) {
-                  final versionData = versions[index].data();
-                  final content = versionData['message'] ?? 'No content';
-                  final versionNumber = versionData['version'] ?? index + 1;
-                  final Timestamp date = versionData['date'] ?? 'No date';
-
-                  final time=date.toDate();
-                  return ListTile(
-                    title: Text(content),
-                    subtitle: Text("Version: $versionNumber"),
-                    trailing: Text(
-                      time.toString(),
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-                  );
-                },
-              ),
-            ],
-          );
-        },
-      ),
     );
   }
 }

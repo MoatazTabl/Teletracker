@@ -1,0 +1,12 @@
+flutter_native_splash:
+
+  color: "#ffffff"
+  image: assets/images/splash.png
+
+  android_12:
+    image: assets/images/splash_android12_logo.png
+    color: "#ffffff"
+
+
+    # to generate this file to create auto splash screen instead of the manual one you can use this command
+     # dart run flutter_native_splash:create --path=flutter_native_splash.yaml

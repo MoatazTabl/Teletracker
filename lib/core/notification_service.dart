@@ -170,16 +170,6 @@ class NotificationService {
     }
   }
 
-  void _handlePayload(String? payload) {
-    if (payload != null) {
-      try {
-        final data = jsonDecode(payload) as Map<String, dynamic>;
-        _handleMessageData(data);
-      } catch (e) {
-        print('Error parsing notification payload: $e');
-      }
-    }
-  }
 
   Future<void> _setupMessageHandlers() async {
     // Foreground: Trigger callback immediately

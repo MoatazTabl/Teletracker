@@ -3,14 +3,14 @@ import 'dart:math';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:awesome_notifications/awesome_notifications.dart';  // استيراد مكتبة awesome_notifications
-import 'package:flutter/material.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  await NotificationService.instance.setupAwesomeNotifications();  // استخدام setupAwesomeNotifications بدلاً من flutter_local_notifications
+  await NotificationService.instance.setupFlutterNotifications();
+  await NotificationService.instance.showNotification(message);
 }
 
 class NotificationService {
@@ -18,7 +18,8 @@ class NotificationService {
   static final NotificationService instance = NotificationService._();
 
   final _messaging = FirebaseMessaging.instance;
-  bool _isAwesomeNotificationsInitialized = false;
+  final _localNotifications = FlutterLocalNotificationsPlugin();
+  bool _isFlutterLocalNotificationsInitialized = false;
 
   Future<void> initialize() async {
     FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
@@ -31,27 +32,26 @@ class NotificationService {
 
     // Get FCM token
     final token = await _messaging.getToken();
-    if (token != null) {
-      String deviceId = await getDeviceId();
-      await FirebaseFirestore.instance.collection('users').doc(deviceId).set(
-        {"fcm_token": token, "last_active": DateTime.now()},
-        SetOptions(merge: true),
-      );
-      print("FCM Token saved: $token");
-    }
+     if (token != null) {
+        String deviceId = await getDeviceId();
+    await FirebaseFirestore.instance.collection('users').doc(deviceId).set(
+      {"fcm_token": token,"last_active": DateTime.now(),},
+      SetOptions(merge: true), 
+    );
+    print("FCM Token saved: $token");
   }
-
+  }
   Future<String> getDeviceId() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    String? deviceId = prefs.getString('device_id');
+  SharedPreferences prefs = await SharedPreferences.getInstance();
+  String? deviceId = prefs.getString('device_id');
 
-    if (deviceId == null) {
-      deviceId = const Uuid().v4();  // Generate UUID
-      await prefs.setString('device_id', deviceId);
-    }
-
-    return deviceId;
+  if (deviceId == null) {
+    deviceId = const Uuid().v4(); // Generate UUID
+    await prefs.setString('device_id', deviceId);
   }
+
+  return deviceId;
+}
 
   Future<void> _requestPermission() async {
     final settings = await _messaging.requestPermission(
@@ -67,49 +67,87 @@ class NotificationService {
     print('Permission status: ${settings.authorizationStatus}');
   }
 
-  Future<void> setupAwesomeNotifications() async {
-    if (_isAwesomeNotificationsInitialized) {
+  Future<void> setupFlutterNotifications() async {
+    if (_isFlutterLocalNotificationsInitialized) {
       return;
     }
 
-    // إعداد الإشعارات لـ Android و iOS باستخدام awesome_notifications
-    AwesomeNotifications().initialize(
-      'resource://drawable/res_app_icon',  // أيقونة التطبيق
-      [
-        NotificationChannel(
-          channelKey: 'basic_channel',
-          channelName: 'Basic notifications',
-          channelDescription: 'Notification channel for basic notifications',
-          defaultColor: Color(0xFF9D50DD),
-          ledColor: Colors.white,
-        )
-      ],
+    // android setup
+    const channel = AndroidNotificationChannel(
+      'high_importance_channel',
+      'High Importance Notifications',
+      description: 'This channel is used for important notifications.',
+      importance: Importance.high,
     );
-    _isAwesomeNotificationsInitialized = true;
+
+    await _localNotifications
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>()
+        ?.createNotificationChannel(channel);
+
+    const initializationSettingsAndroid =
+        AndroidInitializationSettings('@mipmap/ic_launcher');
+
+    // ios setup
+    // final initializationSettingsDarwin = DarwinInitializationSettings(
+    //   onDidReceiveLocalNotification: (id, title, body, payload) async {
+    //     // Handle iOS foreground notification
+    //   },
+    // );
+
+    final initializationSettings = InitializationSettings(
+      android: initializationSettingsAndroid,
+      // iOS: initializationSettingsDarwin,
+    );
+
+    // flutter notification setup
+    await _localNotifications.initialize(
+      initializationSettings,
+      onDidReceiveNotificationResponse: (details) {},
+    );
+
+    _isFlutterLocalNotificationsInitialized = true;
   }
 
   Future<void> showNotification(RemoteMessage message) async {
-    // يمكنك تخصيص الإشعارات بناءً على محتوى الرسالة
-    AwesomeNotifications().createNotification(
-      content: NotificationContent(
-        id: Random().nextInt(1000),
-        channelKey: 'basic_channel',
-        title: message.notification?.title ?? "No Title",
-        body: message.notification?.body ?? "No Body",
-      ),
-    );
+    RemoteNotification? notification = message.notification;
+    AndroidNotification? android = message.notification?.android;
+    if (notification != null && android != null) {
+      await _localNotifications.show(
+        notification.hashCode,
+        notification.title,
+        notification.body,
+        NotificationDetails(
+          android: AndroidNotificationDetails(
+            'high_importance_channel',
+            'High Importance Notifications',
+            channelDescription:
+                'This channel is used for important notifications.',
+            importance: Importance.high,
+            priority: Priority.high,
+            icon: '@mipmap/ic_launcher',
+          ),
+          iOS: const DarwinNotificationDetails(
+            presentAlert: true,
+            presentBadge: true,
+            presentSound: true,
+          ),
+        ),
+        payload: message.data.toString(),
+      );
+    }
   }
 
   Future<void> _setupMessageHandlers() async {
-    // Message Handler for foreground
+    //foreground message
     FirebaseMessaging.onMessage.listen((message) {
       showNotification(message);
     });
 
-    // Background message handler
+    // background message
     FirebaseMessaging.onMessageOpenedApp.listen(_handleBackgroundMessage);
 
-    // Handle when the app is opened from a terminated state
+    // opened app
     final initialMessage = await _messaging.getInitialMessage();
     if (initialMessage != null) {
       _handleBackgroundMessage(initialMessage);
@@ -118,7 +156,7 @@ class NotificationService {
 
   void _handleBackgroundMessage(RemoteMessage message) {
     if (message.data['type'] == 'chat') {
-      // يمكنك إضافة عملية فتح شاشة المحادثة هنا
+      // open chat screen
     }
   }
 }

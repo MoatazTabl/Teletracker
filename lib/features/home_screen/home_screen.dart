@@ -19,11 +19,8 @@ class MessagesPageState extends State<MessagesPage> {
 
   final ScrollController _scrollController = ScrollController();
   final ValueNotifier<int?> _highlightedMessageId = ValueNotifier<int?>(null);
-  // Update these variables
-  final ValueNotifier<double> _itemHeight = ValueNotifier<double>(150.0); // Default height
-  bool _isFirstItemMeasured = false;
 
-    @override
+  @override
   void initState() {
     NotificationService.onMessageReceived = (msgId) {
       if (mounted) {
@@ -36,6 +33,13 @@ class MessagesPageState extends State<MessagesPage> {
     super.initState();
   }
 
+  @override
+  void dispose() {
+    NotificationService.onMessageReceived = null;
+    _scrollController.dispose();
+    _highlightedMessageId.dispose();
+    super.dispose();
+  }
 
   void jumpToMessage(int messageId) async {
     print("jump to message $messageId");
@@ -43,61 +47,13 @@ class MessagesPageState extends State<MessagesPage> {
     print("Target index: $targetIndex");
     if (targetIndex != -1) {
       _highlightedMessageId.value = messageId;
-      
-      // Wait for height measurement if not already measured
-      if (!_isFirstItemMeasured) {
-        await Future.delayed(Duration(milliseconds: 500));
-      }
-      
+
       await _scrollController.animateTo(
-        targetIndex * _itemHeight.value+60,
+        targetIndex * 100,
         duration: const Duration(milliseconds: 500),
         curve: Curves.easeInOut,
       );
     }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Telegram Messages'), centerTitle: true),
-      body: ValueListenableBuilder<int?>(
-        valueListenable: _highlightedMessageId,
-        builder: (context, highlightedMessageId, child) {
-          return FirestoreListView<Map<String, dynamic>>(
-            query: messagesQuery,
-            controller: _scrollController,
-            pageSize: 20,
-            loadingBuilder: (context) => const Center(child: CircularProgressIndicator()),
-            errorBuilder: (context, error, stackTrace) => Center(child: Text('Error: $error')),
-            emptyBuilder: (context) => const Center(child: Text('No messages found.')),
-            itemBuilder: (context, snapshot) {
-              return MessageCardWidget(
-                key: ValueKey(snapshot.id),
-                messageDoc: snapshot,
-                isHighlighted: int.tryParse(snapshot.get('msg_id') ?? '') == highlightedMessageId,
-                onHeightChanged: (height) {
-                  if (!_isFirstItemMeasured) {
-                    _itemHeight.value = height;
-                    _isFirstItemMeasured = true;
-                    print("[Height] First item measured: ${height}px");
-                  }
-                },
-              );
-            },
-          );
-        },
-      ),
-    );
-  }
-
-  @override
-  void dispose() {
-    _itemHeight.dispose();
-    NotificationService.onMessageReceived = null;
-    _scrollController.dispose();
-    _highlightedMessageId.dispose();
-    super.dispose();
   }
 
   Future<int> _findMessageIndexById(int messageId) async {
@@ -130,5 +86,41 @@ class MessagesPageState extends State<MessagesPage> {
       print("Error finding message index: $e");
       return -1;
     }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Telegram Messages'), centerTitle: true),
+      body: ValueListenableBuilder<int?>(
+        valueListenable: _highlightedMessageId,
+        builder: (context, highlightedMessageId, child) {
+          return FirestoreListView<Map<String, dynamic>>(
+            query: messagesQuery,
+            controller: _scrollController,
+            pageSize: 20, // Increased from 2 to better performance
+            loadingBuilder:
+                (context) => const Center(child: CircularProgressIndicator()),
+            errorBuilder:
+                (context, error, stackTrace) =>
+                    Center(child: Text('Error: $error')),
+            emptyBuilder:
+                (context) => const Center(child: Text('No messages found.')),
+            itemBuilder: (context, snapshot) {
+              return MessageCardWidget(
+                key: ValueKey(snapshot.id),
+                messageDoc: snapshot,
+                isHighlighted:
+                    int.tryParse(snapshot.get('msg_id') ?? '') ==
+                    highlightedMessageId,
+                    onHeightChanged: (p0) {
+                      
+                    },
+              );
+            },
+          );
+        },
+      ),
+    );
   }
 }

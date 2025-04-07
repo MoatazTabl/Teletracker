@@ -77,6 +77,8 @@ class NotificationService {
       'High Importance Notifications',
       description: 'This channel is used for important notifications.',
       importance: Importance.max,
+      enableLights: true,
+      enableVibration: true,
       playSound: true,
     );
 

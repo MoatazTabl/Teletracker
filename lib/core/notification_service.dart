@@ -1,6 +1,5 @@
 import 'dart:async';
-import 'dart:math';
-
+import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -21,142 +20,179 @@ class NotificationService {
   final _localNotifications = FlutterLocalNotificationsPlugin();
   bool _isFlutterLocalNotificationsInitialized = false;
 
+  // Static callback to trigger jumpToMessage
+  static void Function(int msgId)? onMessageReceived;
+
+  // Store msg_id if callback isn't set yet (e.g., app starting)
+  int? _pendingMsgId;
+
   Future<void> initialize() async {
-    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-
-    // Request permission
     await _requestPermission();
-
-    // Setup message handlers
     await _setupMessageHandlers();
 
-    // Get FCM token
     final token = await _messaging.getToken();
-     if (token != null) {
+    if (token != null) {
+      String deviceId = await getDeviceId();
+      await FirebaseFirestore.instance.collection('users').doc(deviceId).set({
+        "fcm_token": token,
+        "last_active": DateTime.now(),
+      }, SetOptions(merge: true));
+      print("FCM Token saved: $token");
+
+      _messaging.onTokenRefresh.listen((newToken) async {
+        print('FCM Token refreshed: $newToken');
         String deviceId = await getDeviceId();
-    await FirebaseFirestore.instance.collection('users').doc(deviceId).set(
-      {"fcm_token": token,"last_active": DateTime.now(),},
-      SetOptions(merge: true), 
-    );
-    print("FCM Token saved: $token");
+        await FirebaseFirestore.instance.collection('users').doc(deviceId).set({
+          "fcm_token": newToken,
+          "last_active": DateTime.now(),
+        }, SetOptions(merge: true));
+      });
+    }
   }
-  }
+
   Future<String> getDeviceId() async {
-  SharedPreferences prefs = await SharedPreferences.getInstance();
-  String? deviceId = prefs.getString('device_id');
-
-  if (deviceId == null) {
-    deviceId = const Uuid().v4(); // Generate UUID
-    await prefs.setString('device_id', deviceId);
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    String? deviceId = prefs.getString('device_id');
+    if (deviceId == null) {
+      deviceId = const Uuid().v4();
+      await prefs.setString('device_id', deviceId);
+    }
+    return deviceId;
   }
-
-  return deviceId;
-}
 
   Future<void> _requestPermission() async {
     final settings = await _messaging.requestPermission(
       alert: true,
       badge: true,
       sound: true,
-      provisional: false,
-      announcement: false,
-      carPlay: false,
-      criticalAlert: false,
     );
-
     print('Permission status: ${settings.authorizationStatus}');
   }
 
   Future<void> setupFlutterNotifications() async {
-    if (_isFlutterLocalNotificationsInitialized) {
-      return;
-    }
+    if (_isFlutterLocalNotificationsInitialized) return;
 
-    // android setup
     const channel = AndroidNotificationChannel(
       'high_importance_channel',
       'High Importance Notifications',
       description: 'This channel is used for important notifications.',
-      importance: Importance.high,
+      importance: Importance.max,
+      enableLights: true,
+      enableVibration: true,
+      playSound: true,
     );
 
     await _localNotifications
         .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
+          AndroidFlutterLocalNotificationsPlugin
+        >()
         ?.createNotificationChannel(channel);
 
-    const initializationSettingsAndroid =
-        AndroidInitializationSettings('@mipmap/ic_launcher');
-
-    // ios setup
-    // final initializationSettingsDarwin = DarwinInitializationSettings(
-    //   onDidReceiveLocalNotification: (id, title, body, payload) async {
-    //     // Handle iOS foreground notification
-    //   },
-    // );
-
+    const initializationSettingsAndroid = AndroidInitializationSettings(
+      '@mipmap/ic_notification',
+    );
     final initializationSettings = InitializationSettings(
       android: initializationSettingsAndroid,
-      // iOS: initializationSettingsDarwin,
     );
 
-    // flutter notification setup
     await _localNotifications.initialize(
       initializationSettings,
-      onDidReceiveNotificationResponse: (details) {},
+      onDidReceiveNotificationResponse: (details) {
+        if (details.payload != null) {
+          try {
+            final data = jsonDecode(details.payload!) as Map<String, dynamic>;
+            _handleMessageData(data);
+          } catch (e) {
+            print('Error handling notification response: $e');
+          }
+        }
+      },
     );
 
     _isFlutterLocalNotificationsInitialized = true;
   }
 
   Future<void> showNotification(RemoteMessage message) async {
-    RemoteNotification? notification = message.notification;
-    AndroidNotification? android = message.notification?.android;
+    // Handle message data first
+    _handleMessageData(message.data);
+
+    // Show notification if available 
+    final notification = message.notification;
+    final android = message.notification?.android;
+
     if (notification != null && android != null) {
-      await _localNotifications.show(
-        notification.hashCode,
-        notification.title,
-        notification.body,
-        NotificationDetails(
-          android: AndroidNotificationDetails(
-            'high_importance_channel',
-            'High Importance Notifications',
-            channelDescription:
-                'This channel is used for important notifications.',
-            importance: Importance.high,
-            priority: Priority.high,
-            icon: '@mipmap/ic_launcher',
+      try {
+        await _localNotifications.show(
+          notification.hashCode,
+          notification.title,
+          notification.body,
+          NotificationDetails(
+            android: AndroidNotificationDetails(
+              'high_importance_channel',
+              'High Importance Notifications',
+              channelDescription:
+                  'This channel is used for important notifications.',
+              importance: Importance.max,
+              priority: Priority.max,
+              icon: '@mipmap/ic_notification',
+            ),
+            iOS: const DarwinNotificationDetails(
+              presentAlert: true,
+              presentBadge: true,
+              presentSound: true,
+            ),
           ),
-          iOS: const DarwinNotificationDetails(
-            presentAlert: true,
-            presentBadge: true,
-            presentSound: true,
-          ),
-        ),
-        payload: message.data.toString(),
-      );
+          payload: jsonEncode(message.data),
+        );
+      } catch (e) {
+        print('Error showing notification: $e');
+      }
     }
   }
+
+  void _handleMessageData(Map<String, dynamic> data) {
+ print("Handling message data...$data");
+  if (data.containsKey('msg_id')) {
+  
+  
+
+
+    final msgId = int.tryParse(data["msg_id"]);
+    print("Parsed msgId: $msgId");
+      
+      if (msgId != null) {
+        print("Received msg_id: $msgId");
+        if (onMessageReceived != null) {
+          onMessageReceived!(msgId);
+        } else {
+          _pendingMsgId = msgId;
+          print("Callback not set, storing msg_id: $msgId");
+        }
+      }
+    }
+  }
+
 
   Future<void> _setupMessageHandlers() async {
-    //foreground message
-    FirebaseMessaging.onMessage.listen((message) {
-      showNotification(message);
-    });
+    // Foreground: Trigger callback immediately
+    FirebaseMessaging.onMessage.listen(showNotification);
 
-    // background message
-    FirebaseMessaging.onMessageOpenedApp.listen(_handleBackgroundMessage);
-
-    // opened app
+    // Terminated: Check initial message and store if callback not set
     final initialMessage = await _messaging.getInitialMessage();
-    if (initialMessage != null) {
-      _handleBackgroundMessage(initialMessage);
-    }
+    if (initialMessage != null) _handleMessageData(initialMessage.data);
+
+    // Background: Trigger callback or store if not set
+    FirebaseMessaging.onMessageOpenedApp.listen(
+      (message) => _handleMessageData(message.data),
+    );
   }
 
-  void _handleBackgroundMessage(RemoteMessage message) {
-    if (message.data['type'] == 'chat') {
-      // open chat screen
+  // Method to check and trigger pending message after callback is set
+  void checkPendingMessage() {
+    if (_pendingMsgId != null && onMessageReceived != null) {
+      print("Triggering pending msg_id: $_pendingMsgId");
+      onMessageReceived!(_pendingMsgId!);
+      _pendingMsgId = null; // Clear after triggering
     }
   }
 }

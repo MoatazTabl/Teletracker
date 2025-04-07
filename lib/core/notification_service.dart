@@ -116,7 +116,7 @@ class NotificationService {
     // Handle message data first
     _handleMessageData(message.data);
 
-    // Show notification if available
+    // Show notification if available 
     final notification = message.notification;
     final android = message.notification?.android;
 

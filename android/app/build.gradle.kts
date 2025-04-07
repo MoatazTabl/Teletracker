@@ -1,5 +1,3 @@
-import java.util.Properties
-
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -32,25 +30,15 @@ android {
     kotlinOptions {
         jvmTarget = JavaVersion.VERSION_11.toString()
     }
- 
-
-val keystoreProperties = Properties().apply {
-    val keystoreFile = rootProject.file("key.properties")
-    if (keystoreFile.exists()) {
-        load(keystoreFile.inputStream())
-    }
-}
-
-
 
     signingConfigs {
-    create("release") {
-        storeFile = file(keystoreProperties.getProperty("storeFile"))
-        storePassword = keystoreProperties.getProperty("storePassword")
-        keyAlias = keystoreProperties.getProperty("keyAlias")
-        keyPassword = keystoreProperties.getProperty("keyPassword")
+        create("release") {
+            storeFile = file("keystore.jks")  // Set the keystore file path
+            storePassword = "your-keystore-password"
+            keyAlias = "your-key-alias"
+            keyPassword = "your-key-password"
+        }
     }
-}
 
     buildTypes {
         release {

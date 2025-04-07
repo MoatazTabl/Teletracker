@@ -1,18 +1,15 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:teletracker/core/notification_service.dart';
 import 'package:teletracker/features/home_screen/widgets/message_card_widget.dart';
-import 'package:firebase_ui_firestore/firebase_ui_firestore.dart';
+
+import '../../core/notification_service.dart';
 
 class MessagesPage extends StatefulWidget {
-  const MessagesPage({super.key});
-
   @override
-  State<MessagesPage> createState() => MessagesPageState();
+  MessagesPageState createState() => MessagesPageState();
 }
 
 class MessagesPageState extends State<MessagesPage> {
-  // Remove the limit from the base query
   final messagesQuery = FirebaseFirestore.instance
       .collection('messages')
       .orderBy('created_at', descending: true);
@@ -22,6 +19,7 @@ class MessagesPageState extends State<MessagesPage> {
 
   @override
   void initState() {
+    super.initState();
     NotificationService.onMessageReceived = (msgId) {
       if (mounted) {
         jumpToMessage(msgId);
@@ -30,7 +28,6 @@ class MessagesPageState extends State<MessagesPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       NotificationService.instance.checkPendingMessage();
     });
-    super.initState();
   }
 
   @override
@@ -47,7 +44,6 @@ class MessagesPageState extends State<MessagesPage> {
     print("Target index: $targetIndex");
     if (targetIndex != -1) {
       _highlightedMessageId.value = messageId;
-
       await _scrollController.animateTo(
         targetIndex * 100,
         duration: const Duration(milliseconds: 500),
@@ -58,18 +54,16 @@ class MessagesPageState extends State<MessagesPage> {
 
   Future<int> _findMessageIndexById(int messageId) async {
     try {
-      // Use a larger batch size for searching
       Query<Map<String, dynamic>> query = messagesQuery.limit(50);
       QuerySnapshot<Map<String, dynamic>> snapshot = await query.get();
       List<QueryDocumentSnapshot<Map<String, dynamic>>> docs = snapshot.docs;
 
-      // Keep fetching until message is found or no more documents
       while (docs.isNotEmpty &&
           !docs.any((doc) => int.parse(doc.get('msg_id')) == messageId)) {
         final lastDoc = docs.last;
         query = messagesQuery.limit(50).startAfterDocument(lastDoc);
         snapshot = await query.get();
-        if (snapshot.docs.isEmpty) break; // No more documents
+        if (snapshot.docs.isEmpty) break;
         docs.addAll(snapshot.docs);
         print("[Search] Fetched additional batch, total docs: ${docs.length}");
       }
@@ -95,27 +89,35 @@ class MessagesPageState extends State<MessagesPage> {
       body: ValueListenableBuilder<int?>(
         valueListenable: _highlightedMessageId,
         builder: (context, highlightedMessageId, child) {
-          return FirestoreListView<Map<String, dynamic>>(
-            query: messagesQuery,
-            controller: _scrollController,
-            pageSize: 20, // Increased from 2 to better performance
-            loadingBuilder:
-                (context) => const Center(child: CircularProgressIndicator()),
-            errorBuilder:
-                (context, error, stackTrace) =>
-                    Center(child: Text('Error: $error')),
-            emptyBuilder:
-                (context) => const Center(child: Text('No messages found.')),
-            itemBuilder: (context, snapshot) {
-              return MessageCardWidget(
-                key: ValueKey(snapshot.id),
-                messageDoc: snapshot,
-                isHighlighted:
-                    int.tryParse(snapshot.get('msg_id') ?? '') ==
-                    highlightedMessageId,
-                    onHeightChanged: (p0) {
-                      
+          return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            stream: messagesQuery.snapshots(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+
+              if (snapshot.hasError) {
+                return Center(child: Text('Error: ${snapshot.error}'));
+              }
+
+              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                return const Center(child: Text('No messages found.'));
+              }
+
+              return ListView.builder(
+                controller: _scrollController,
+                itemCount: snapshot.data!.docs.length,
+                itemBuilder: (context, index) {
+                  var document = snapshot.data!.docs[index];
+                  return MessageCardWidget(
+                    key: ValueKey(document.id),
+                    messageDoc: document,
+                    isHighlighted: int.tryParse(document['msg_id']) == highlightedMessageId,
+                    onHeightChanged: (height) {
+                      // التعامل مع تغيير الارتفاع إذا لزم الأمر
                     },
+                  );
+                },
               );
             },
           );

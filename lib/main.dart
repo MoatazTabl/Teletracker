@@ -78,7 +78,7 @@ Future<bool> initializeFirebaseWithRetry({
 
       if (attempts >= maxAttempts) {
         try {
-
+          // Try to record the error if Crashlytics is available
           await FirebaseCrashlytics.instance.recordError(
             e,
             stack,
@@ -138,12 +138,10 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // In MyApp build method
     return MaterialApp(
       title: 'Telegram Messages',
-
       theme: ThemeData(primarySwatch: Colors.blue, useMaterial3: true),
-      home: const MessagesPage(),
+      home: MessagesPage(),
       debugShowCheckedModeBanner: false,
     );
   }

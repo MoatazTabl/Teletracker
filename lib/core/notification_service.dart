@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
@@ -89,7 +90,7 @@ class NotificationService {
         ?.createNotificationChannel(channel);
 
     const initializationSettingsAndroid = AndroidInitializationSettings(
-      '@mipmap/ic_notification',
+      '@mipmap/ic_launcher',
     );
     final initializationSettings = InitializationSettings(
       android: initializationSettingsAndroid,
@@ -113,28 +114,33 @@ class NotificationService {
   }
 
   Future<void> showNotification(RemoteMessage message) async {
-    // Handle message data first
+    // Ensure notifications are initialized
+    if (!_isFlutterLocalNotificationsInitialized) {
+      await setupFlutterNotifications();
+    }
+
+    // Handle message data
     _handleMessageData(message.data);
 
-    // Show notification if available 
+    // Show notification
     final notification = message.notification;
-    final android = message.notification?.android;
-
-    if (notification != null && android != null) {
+    if (notification != null) {
       try {
         await _localNotifications.show(
           notification.hashCode,
-          notification.title,
-          notification.body,
+          notification.title ?? 'New Message',
+          notification.body ?? '',
           NotificationDetails(
             android: AndroidNotificationDetails(
               'high_importance_channel',
               'High Importance Notifications',
-              channelDescription:
-                  'This channel is used for important notifications.',
+              channelDescription: 'Important notifications',
               importance: Importance.max,
-              priority: Priority.max,
-              icon: '@mipmap/ic_notification',
+              priority: Priority.high,
+              icon: '@mipmap/ic_launcher',
+              color: Colors.blue,
+              playSound: true,
+              enableVibration: true,
             ),
             iOS: const DarwinNotificationDetails(
               presentAlert: true,
@@ -144,8 +150,9 @@ class NotificationService {
           ),
           payload: jsonEncode(message.data),
         );
-      } catch (e) {
-        print('Error showing notification: $e');
+      } catch (e, stack) {
+        print('Notification error: $e');
+        print(stack);
       }
     }
   }

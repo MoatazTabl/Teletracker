@@ -15,7 +15,7 @@ android {
     defaultConfig {
         applicationId = "com.example.teletracker"
         multiDexEnabled = true
-        minSdk = 21  // Explicitly set
+        minSdk = 23  // Explicitly set
         targetSdk = 34  // Stable version
         versionCode = 1
         versionName = "1.0.0"

@@ -73,10 +73,10 @@ class _MessageCardWidgetState extends State<MessageCardWidget> with MessageCardM
         return Card(
           key: _cardKey,
           margin: const EdgeInsets.all(8),
-          color: isHighlighted ? Colors.yellow.withOpacity(0.1) : Colors.white,
+          color: isHighlighted ? Colors.yellow.withValues(alpha: 0.1) : Colors.white,
           elevation: 2,
           child: AnimatedContainer(
-            duration: const Duration(milliseconds: 500),
+            duration: const Duration(seconds: 2),
             decoration: BoxDecoration(
               border: isHighlighted ? Border.all(color: Colors.amber, width: 1.5) : null,
             ),

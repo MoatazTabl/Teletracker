@@ -5,10 +5,13 @@ plugins {
     id("com.google.gms.google-services") 
     id("com.google.firebase.crashlytics")
 }
+    import java.util.Properties
+
 
 android {
     namespace = "com.example.teletracker"
-    compileSdk = 35  // Use stable version
+    compileSdk = 35
+
 
     ndkVersion = "27.0.12077973"
 
@@ -30,19 +33,24 @@ android {
     kotlinOptions {
         jvmTarget = JavaVersion.VERSION_11.toString()
     }
+    // Fix the keystore properties loading
+    val keystorePropertiesFile = rootProject.file("key.properties")
+    val keystoreProperties = Properties().apply {
+        keystorePropertiesFile.inputStream().use { load(it) }
+    }
 
     signingConfigs {
         create("release") {
-            storeFile = file("keystore.jks")  // Set the keystore file path
-            storePassword = "your-keystore-password"
-            keyAlias = "your-key-alias"
-            keyPassword = "your-key-password"
+            storeFile = file(keystoreProperties.getProperty("storeFile"))
+            storePassword = keystoreProperties.getProperty("storePassword")
+            keyAlias = keystoreProperties.getProperty("keyAlias")
+            keyPassword = keystoreProperties.getProperty("keyPassword")
         }
     }
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("release") // Use proper signing
+signingConfig = signingConfigs["release"]
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(

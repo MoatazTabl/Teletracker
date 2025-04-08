@@ -2,11 +2,85 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:diff_match_patch/diff_match_patch.dart';
 
-
 mixin MessageCardMixin {
+  // دالة لتنسيق التاريخ فقط
+  String _formatDate(DateTime dateTime) {
+    return '${dateTime.year}/${dateTime.month}/${dateTime.day}';
+  }
+
+  // دالة لتنسيق الوقت فقط
+  String _formatTime(DateTime dateTime) {
+    final hour = dateTime.hour > 12 ? dateTime.hour - 12 : dateTime.hour;
+    final amPm = dateTime.hour >= 12 ? 'PM' : 'AM';
+    final hourString = hour == 0 ? '12' : hour.toString();
+    return '$hourString:${dateTime.minute.toString().padLeft(2, '0')}:${dateTime.second.toString().padLeft(2, '0')} $amPm';
+  }
+
+  // دالة قديمة للتوافق، لكن لن نستخدمها مباشرة في الواجهة
   String formatDateTime(DateTime dateTime) {
     final dateFormat = DateFormat('yyyy/MM/dd h:mm:ss a');
     return dateFormat.format(dateTime);
+  }
+
+  // دالة جديدة لبناء واجهة التاريخ والوقت مع Edited
+  Widget buildDateTimeWidget(BuildContext context, DateTime dateTime, bool isEdited) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              'Day: ',
+              style: TextStyle(
+                color: Colors.black87, // لون أسود داكن
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            Text(
+              _formatDate(dateTime),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: Colors.black87,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Row(
+          children: [
+            Text(
+              'Time: ',
+              style: TextStyle(
+                color: Colors.blueGrey[700], 
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            Text(
+              _formatTime(dateTime),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: Colors.blueGrey[700],
+              ),
+            ),
+          ],
+        ),
+        if (isEdited) 
+          Row(
+            children: [
+              const Text(
+                'Edited',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ],
+          ),
+      ],
+    );
   }
 
   List<InlineSpan> _buildTextWithEdits(String previous, String current) {
@@ -36,7 +110,7 @@ mixin MessageCardMixin {
             TextSpan(
               text: text,
               style: TextStyle(
-                backgroundColor: Colors.green.withOpacity(0.3),
+                backgroundColor: Colors.green.withValues(alpha :0.3),
                 color: Colors.black,
               ),
             ),
@@ -49,7 +123,7 @@ mixin MessageCardMixin {
               TextSpan(
                 text: insertedText,
                 style: TextStyle(
-                  backgroundColor: Colors.red.withOpacity(0.2),
+                  backgroundColor: Colors.red.withValues(alpha :0.3),
                   color: Colors.black,
                 ),
               ),

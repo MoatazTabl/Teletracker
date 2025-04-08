@@ -122,44 +122,33 @@ class _MessageCardWidgetState extends State<MessageCardWidget> with MessageCardM
                     final String previousContent =
                         index > 0 ? versions[index - 1].data()['message'] ?? '' : '';
 
-                    return ListTile(
-                      title: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: buildMessageLines(content, previousContent, index),
-                      ),
-                      subtitle: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const SizedBox(height: 4),
-                          Text(
-                            "Version: $versionNumber",
-                            style: const TextStyle(color: Colors.blueAccent),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            formatDateTime(displayTime),
-                            style: TextStyle(color: Colors.grey[700], fontSize: 12),
-                          ),
-                          if (isEdited)
-                            const Text(
-                              '(edited)',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey,
-                                fontStyle: FontStyle.italic,
-                              ),
-                            ),
-                          if (index < versions.length - 1)
-                            Divider(
-                              color: Colors.grey[300],
-                              thickness: 0.5,
-                              indent: 16,
-                              endIndent: 16,
-                            ),
-                        ],
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    );
+      return ListTile(
+  title: Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: buildMessageLines(content, previousContent, index),
+  ),
+  subtitle: Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      const SizedBox(height: 4),
+      Text(
+        "Version: $versionNumber",
+        style: const TextStyle(color: Colors.blueAccent),
+      ),
+      const SizedBox(height: 4),
+      // The changed part
+      buildDateTimeWidget(context, displayTime, isEdited), 
+      if (index < versions.length - 1)
+        Divider(
+          color: Colors.grey,
+          thickness: 0.5,
+          indent: 16,
+          endIndent: 16,
+        ),
+    ],
+  ),
+  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+);    
                   }),
                 );
               },
